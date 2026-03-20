@@ -1,8 +1,6 @@
-# Algorithmic HRI: Cost-Sensitive Clarification Under Uncertain Human Intent
+# Cost-Sensitive Clarification Under Uncertain Human Intent
 
 ## Overview
-
-This project studies a fundamental question in human-robot interaction:
 
 **When should a robot act immediately, and when should it ask the human for clarification?**
 
@@ -49,9 +47,9 @@ This kind of reasoning is important in:
 
 ## Problem formulation
 
-The human's true intended object is hidden from the robot. The robot only observes the human's instruction, and possibly a later clarification response.
+The human's true intended object is hidden from or uncertain to the robot. The robot only observes the human's instruction, and possibly a later clarification response.
 
-Because the true goal is not directly observable, this is naturally modeled as a **Partially Observable Markov Decision Process (POMDP)**.
+Because the true goal is not directly observable, this is modeled as a **Partially Observable Markov Decision Process (POMDP)**.
 
 We define the problem as:
 
@@ -69,7 +67,7 @@ where:
 - `R` = reward function
 - `gamma` = discount factor
 
-In practice, we solve the problem in **belief space**, which gives a **belief-state MDP**.
+In practice, I solve the problem in **belief space**, which gives a **belief-state MDP**.
 
 ---
 
@@ -110,7 +108,7 @@ The robot asks the human a clarification question before acting.
 For example:
 - "Did you mean the red mug or the blue mug?"
 
-We intentionally keep the action space simple so that we can isolate the core decision problem:
+I intentionally keep the action space simple so that we can isolate the core decision problem:
 **act now vs gather more information**
 
 ---
@@ -160,7 +158,7 @@ $$
 
 which describes how likely an observation is given the true goal.
 
-In our implementation, we approximate this step using a language model.
+In the implementation, I approximate this step using a language model.
 
 Given:
 - a user instruction
@@ -168,7 +166,7 @@ Given:
 
 the language model outputs a probability distribution over those objects.
 
-We interpret that distribution as the robot's belief over possible goals.
+I interpret that distribution as the robot's belief over possible goals.
 
 ---
 
@@ -264,7 +262,7 @@ This reflects interruption, delay, or annoyance.
 
 ## Typical reward values
 
-In our experiments, we can use values such as:
+In the experiments, I use values such as:
 
 - `Rc = 10`
 - `Cw = 12`
@@ -431,7 +429,7 @@ For example, if `tau = 0.75`, then the robot only acts when its top belief is at
 
 ### 4. Cost-sensitive policy (main method)
 
-Our main method compares expected utility directly:
+The main method compares expected utility directly:
 
 $$
 \pi(b) = \arg\max_{a \in \{ACT, ASK\}} Q(a)
@@ -591,9 +589,9 @@ This is useful for analyzing whether the robot asks more often in genuinely unce
 
 ## Why the LLM matters
 
-A major part of the project is that we do not hand-code the mapping from language to object probabilities.
+A major part of the project is that I do not hand-code the mapping from language to object probabilities.
 
-Instead, we use a language model to estimate:
+Instead, I use a language model to estimate:
 
 $$
 b(g) \approx P(g \mid instruction, G)
@@ -631,6 +629,6 @@ This project asks a simple but important question:
 
 **When should a robot act, and when should it ask?**
 
-We model the problem as a POMDP because the human's intended goal is hidden. We solve it as a belief-state MDP by maintaining a probability distribution over candidate objects. A language model provides the belief distribution from natural-language instructions. The robot then uses a cost-sensitive policy to compare the expected value of acting versus asking for clarification.
+I model the problem as a POMDP because the human's intended goal is hidden. I solve it as a belief-state MDP by maintaining a probability distribution over candidate objects. A language model provides the belief distribution from natural-language instructions. The robot then uses a cost-sensitive policy to compare the expected value of acting versus asking for clarification.
 
-This framework is useful because it makes ambiguity explicit, grounds decisions in uncertainty, and connects robot behavior directly to task costs.
+This framework could be useful because it makes ambiguity explicit, grounds decisions in uncertainty, and connects robot behavior directly to task costs.
