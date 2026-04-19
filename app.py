@@ -73,11 +73,22 @@ else:
 
 def _extract_json(text: str) -> dict | None:
     """Try to find a JSON object in model output."""
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    # First try strict parsing (works when model returns pure JSON).
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Then try extracting JSON from fenced or mixed output.
+    match = re.search(r"\{[\s\S]*?\}", text)
     if not match:
         return None
+
     try:
-        return json.loads(match.group(0))
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
     except json.JSONDecodeError:
         return None
 
@@ -93,16 +104,20 @@ def _update_belief_from_llm(trial: dict) -> None:
     """Update trial['belief'] using the LLM and show the model output."""
 
     try:
-        updated_belief, model_output = llm_update_belief(
+        updated_belief, model_output, status = llm_update_belief(
             st.session_state.instruction, list(trial["belief"].keys())
         )
-        if updated_belief:
+
+        if updated_belief is not None:
             trial["belief"] = updated_belief
             st.session_state.trial = trial
             st.success("Robot belief updated from LLM output.")
             st.code(model_output, language="text")
         else:
-            st.error("LLM response did not include a valid JSON belief distribution.")
+            if status == "no_key":
+                st.warning(model_output)
+            else:
+                st.error("LLM response did not include a valid JSON belief distribution.")
             st.code(model_output, language="text")
     except Exception as e:
         st.error(f"Failed to update belief via LLM: {e}")
@@ -124,10 +139,11 @@ def get_ask_options(belief: dict[str, float], delta: float = 0.05) -> list[str]:
     return [obj for obj, p in sorted(belief.items(), key=lambda kv: -kv[1]) if p >= threshold]
 
 
-def llm_update_belief(instruction: str, objects: list[str]) -> tuple[dict[str, float], str]:
+def llm_update_belief(instruction: str, objects: list[str]) -> tuple[dict[str, float] | None, str, str]:
     """Query an LLM to return an updated belief distribution over objects.
 
-    Returns (updated_belief, raw_model_text).
+    Returns (updated_belief_or_none, raw_model_text, status).
+    status in {"ok", "no_key", "invalid_output"}
     """
 
     api_key = st.session_state.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
@@ -138,10 +154,12 @@ def llm_update_belief(instruction: str, objects: list[str]) -> tuple[dict[str, f
             api_key = None
 
     if not api_key:
-        # Without an API key, return uniform belief (no LLM inference).
-        return _normalize_belief({obj: 1.0 for obj in objects}), (
-            "No OPENAI_API_KEY found; returning uniform belief distribution."
+        # Without an API key, do not overwrite the current belief silently.
+        message = (
+            "No OPENAI_API_KEY found; belief not updated. "
+            "Set OPENAI_API_KEY, enter a key above, or add secrets to enable LLM updates."
         )
+        return None, message, "no_key"
 
     system_prompt = (
         "You are an assistant that outputs only a single JSON object. "
@@ -158,13 +176,14 @@ def llm_update_belief(instruction: str, objects: list[str]) -> tuple[dict[str, f
 
     url = "https://api.openai.com/v1/chat/completions"
     payload = {
-        "model": "gpt-4",
+        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0,
         "max_tokens": 256,
+        "response_format": {"type": "json_object"},
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
@@ -174,11 +193,15 @@ def llm_update_belief(instruction: str, objects: list[str]) -> tuple[dict[str, f
 
     parsed = _extract_json(text)
     if not parsed:
-        return _normalize_belief({obj: 1.0 for obj in objects}), text
+        return None, text, "invalid_output"
 
     # Keep only known objects and fill missing ones with 0
-    parsed = {k: float(parsed.get(k, 0)) for k in objects}
-    return _normalize_belief(parsed), text
+    try:
+        parsed = {k: max(0.0, float(parsed.get(k, 0))) for k in objects}
+    except (TypeError, ValueError):
+        return None, text, "invalid_output"
+
+    return _normalize_belief(parsed), text, "ok"
 
 if "trial" not in st.session_state:
     st.session_state.trial = sample_trial()
@@ -239,19 +262,22 @@ with col1:
     if st.button("Update beliefs (LLM)"):
         try:
             with st.spinner("Calling the LLM to update robot belief..."):
-                updated_belief, model_output = llm_update_belief(
+                updated_belief, model_output, status = llm_update_belief(
                     st.session_state.instruction, list(trial["belief"].keys())
                 )
 
-            if updated_belief:
+            if updated_belief is not None:
                 trial["belief"] = updated_belief
                 st.session_state.trial = trial
                 st.success("Robot belief updated from LLM output.")
                 st.code(model_output, language="text")
             else:
-                st.error(
-                    "LLM response did not include a valid JSON belief distribution."
-                )
+                if status == "no_key":
+                    st.warning(model_output)
+                else:
+                    st.error(
+                        "LLM response did not include a valid JSON belief distribution."
+                    )
                 st.code(model_output, language="text")
         except Exception as e:
             st.error(f"Failed to update belief via LLM: {e}")
