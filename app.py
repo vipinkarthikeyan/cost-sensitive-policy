@@ -123,7 +123,7 @@ def _update_belief_from_llm(trial: dict) -> None:
         st.error(f"Failed to update belief via LLM: {e}")
 
 
-def get_ask_options(belief: dict[str, float], delta: float = 0.05) -> list[str]:
+def get_ask_options(belief: dict[str, float], delta: float = 0.2) -> list[str]:
     """Return candidate objects to ask about based on current belief.
 
     If multiple objects have probabilities within `delta` of the top belief, include them all.
